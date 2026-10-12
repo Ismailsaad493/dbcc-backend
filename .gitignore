@@ -1,0 +1,16 @@
+node_modules
+*.log
+npm-debug.log*
+
+.env
+.env.local
+
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Real club data (player points, expense records). Not committed so this
+# doesn't end up in a (possibly public) repo. The server auto-creates these
+# with blank defaults on first run if they're missing.
+data/*.json
