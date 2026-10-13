@@ -38,6 +38,10 @@ export function createInitialCollections() {
   return PLAYER_NAMES.map((name, index) => ({ id: index + 1, name, amountPaid: 0 }))
 }
 
+export function createInitialMatches() {
+  return []
+}
+
 export function createInitialReportSettings() {
   const now = new Date()
   const month = now.toLocaleString('en-US', { month: 'long' })

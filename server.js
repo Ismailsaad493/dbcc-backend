@@ -6,6 +6,7 @@ import {
   createInitialExpenses,
   createInitialReportSettings,
   createInitialCollections,
+  createInitialMatches,
 } from './defaults.js'
 
 const app = express()
@@ -33,6 +34,20 @@ function isValidCollectionEntry(c) {
     Number.isFinite(c.id) &&
     typeof c.name === 'string' &&
     Number.isFinite(c.amountPaid)
+  )
+}
+
+function isValidMatch(m) {
+  return (
+    m &&
+    typeof m === 'object' &&
+    typeof m.id === 'string' &&
+    typeof m.date === 'string' &&
+    m.date.trim().length > 0 &&
+    typeof m.matchNumber === 'string' &&
+    m.matchNumber.trim().length > 0 &&
+    Array.isArray(m.points) &&
+    Array.isArray(m.expenses)
   )
 }
 
@@ -111,6 +126,30 @@ app.put('/api/collections', async (req, res, next) => {
       })
     }
     await writeJSON('collections', body)
+    res.json({ ok: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Per-match points and expenses log (keyed by date + match number)
+app.get('/api/matches', async (req, res, next) => {
+  try {
+    res.json(await readJSON('matches', createInitialMatches))
+  } catch (err) {
+    next(err)
+  }
+})
+
+app.put('/api/matches', async (req, res, next) => {
+  try {
+    const body = req.body
+    if (!Array.isArray(body) || !body.every(isValidMatch)) {
+      return res.status(400).json({
+        error: 'Expected an array of matches, each with id, date, matchNumber, points, and expenses.',
+      })
+    }
+    await writeJSON('matches', body)
     res.json({ ok: true })
   } catch (err) {
     next(err)
