@@ -34,10 +34,6 @@ export function createInitialExpenses() {
   return { periods: [], activeId: null }
 }
 
-export function createInitialCollections() {
-  return PLAYER_NAMES.map((name, index) => ({ id: index + 1, name, amountPaid: 0 }))
-}
-
 export function createInitialReportSettings() {
   const now = new Date()
   const month = now.toLocaleString('en-US', { month: 'long' })

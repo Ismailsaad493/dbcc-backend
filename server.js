@@ -5,7 +5,6 @@ import {
   createInitialPlayers,
   createInitialExpenses,
   createInitialReportSettings,
-  createInitialCollections,
 } from './defaults.js'
 
 const app = express()
@@ -23,16 +22,6 @@ function isValidPlayer(p) {
     Number.isFinite(p.batting) &&
     Number.isFinite(p.bowling) &&
     Number.isFinite(p.fielding)
-  )
-}
-
-function isValidCollectionEntry(c) {
-  return (
-    c &&
-    typeof c === 'object' &&
-    Number.isFinite(c.id) &&
-    typeof c.name === 'string' &&
-    Number.isFinite(c.amountPaid)
   )
 }
 
@@ -87,30 +76,6 @@ app.put('/api/expenses', async (req, res, next) => {
       return res.status(400).json({ error: 'Expected the request body to be { periods, activeId }.' })
     }
     await writeJSON('expenses', { periods, activeId: activeId ?? null })
-    res.json({ ok: true })
-  } catch (err) {
-    next(err)
-  }
-})
-
-// Monthly player contributions (₹300 collection tracker)
-app.get('/api/collections', async (req, res, next) => {
-  try {
-    res.json(await readJSON('collections', createInitialCollections))
-  } catch (err) {
-    next(err)
-  }
-})
-
-app.put('/api/collections', async (req, res, next) => {
-  try {
-    const body = req.body
-    if (!Array.isArray(body) || body.length !== EXPECTED_PLAYER_COUNT || !body.every(isValidCollectionEntry)) {
-      return res.status(400).json({
-        error: `Expected an array of exactly ${EXPECTED_PLAYER_COUNT} players, each with id, name, and amountPaid.`,
-      })
-    }
-    await writeJSON('collections', body)
     res.json({ ok: true })
   } catch (err) {
     next(err)
