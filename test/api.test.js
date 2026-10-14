@@ -1,55 +1,29 @@
-// Lightweight API test suite using Node's built-in test runner — no extra
-// dependencies needed. Requires the backend to already be running
-// (`npm run dev` from be/, or from the repo root).
+// Core API test suite using Node's built-in test runner — no extra
+// dependencies. Each run starts its own server on a free port with a
+// throwaway data folder (see helpers.js), so it never touches be/data and
+// doesn't need `npm run dev` running.
 //
-// Run with: node --test test/api.test.js
+// Run with: npm test   (from be/)
 
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { startServer, makeClient, makePlayers } from './helpers.js'
 
-const BASE = process.env.API_URL || 'http://localhost:4000'
-
-async function get(path) {
-  const res = await fetch(`${BASE}${path}`)
-  return { status: res.status, body: await res.json() }
-}
-
-async function put(path, body, { rawBody } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: rawBody ?? JSON.stringify(body),
-  })
-  return { status: res.status, body: await res.json() }
-}
-
-function makeFullPlayerArray(overrides = {}) {
-  const names = [
-    'Mujahid', 'Nabeel', 'Tahir', 'Nathiq', 'Fouzan', 'Bilal', 'Danish',
-    'Sanaulla', 'Pk', 'Sharu', 'Muzammil', 'Faizal', 'Eathu', 'Saif',
-    'Firdose', 'Irfan',
-  ]
-  return names.map((name, i) => ({
-    id: i + 1, name, batting: 0, bowling: 0, fielding: 0, ...overrides,
-  }))
-}
-
-// Snapshot whatever's on disk before the suite runs, and restore it after —
-// these tests write real data to be/data/*.json, so this keeps a run of
-// `node --test` from clobbering whatever the app currently has saved.
-let snapshot = {}
+let server
+let client
 
 before(async () => {
-  snapshot.players = (await get('/api/players')).body
-  snapshot.expenses = (await get('/api/expenses')).body
-  snapshot.reportSettings = (await get('/api/report-settings')).body
+  server = await startServer()
+  client = makeClient(server.base)
 })
 
 after(async () => {
-  await put('/api/players', snapshot.players)
-  await put('/api/expenses', snapshot.expenses)
-  await put('/api/report-settings', snapshot.reportSettings)
+  await server.stop()
 })
+
+const get = (path) => client.get(path)
+const put = (path, body, { rawBody } = {}) => client.put(path, body, { raw: rawBody })
+const makeFullPlayerArray = makePlayers
 
 test('GET / returns a health-check payload', async () => {
   const { status, body } = await get('/')
@@ -105,7 +79,10 @@ test('GET /api/expenses returns { periods, activeId }', async () => {
 })
 
 test('PUT /api/expenses accepts a valid periods array', async () => {
-  const payload = { periods: [{ id: 'p1', label: 'Test Month' }], activeId: 'p1' }
+  const payload = {
+    periods: [{ id: 'p1', label: 'Test Month', income: [], expenses: [] }],
+    activeId: 'p1',
+  }
   const { status } = await put('/api/expenses', payload)
   assert.equal(status, 200)
   const after = await get('/api/expenses')

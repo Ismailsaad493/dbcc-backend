@@ -3,7 +3,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = path.join(__dirname, 'data')
+// DBCC_DATA_DIR lets tests point the store at a throwaway folder instead of be/data.
+const DATA_DIR = process.env.DBCC_DATA_DIR || path.join(__dirname, 'data')
 
 function fileFor(key) {
   return path.join(DATA_DIR, `${key}.json`)

@@ -37,17 +37,51 @@ function isValidCollectionEntry(c) {
   )
 }
 
+const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+
 function isValidMatch(m) {
   return (
-    m &&
-    typeof m === 'object' &&
+    isObject(m) &&
     typeof m.id === 'string' &&
     typeof m.date === 'string' &&
     m.date.trim().length > 0 &&
     typeof m.matchNumber === 'string' &&
     m.matchNumber.trim().length > 0 &&
     Array.isArray(m.points) &&
-    Array.isArray(m.expenses)
+    m.points.every(
+      (p) =>
+        isObject(p) &&
+        Number.isFinite(p.playerId) &&
+        Number.isFinite(p.batting) &&
+        Number.isFinite(p.bowling) &&
+        Number.isFinite(p.fielding),
+    ) &&
+    Array.isArray(m.expenses) &&
+    m.expenses.every((e) => isObject(e) && typeof e.label === 'string' && Number.isFinite(e.amount))
+  )
+}
+
+// Wrong-typed report fields (e.g. a numeric monthLabel) crash the report preview. Missing fields are fine.
+function isValidReportSettings(s) {
+  const isText = (k) => !(k in s) || typeof s[k] === 'string'
+  const isCount = (k) => !(k in s) || typeof s[k] === 'string' || Number.isFinite(s[k])
+  return (
+    isObject(s) &&
+    ['monthLabel', 'tillDate', 'customMessage'].every(isText) &&
+    ['matchesPlayed', 'wins', 'losses'].every(isCount) &&
+    (!('showWinsLosses' in s) || typeof s.showWinsLosses === 'boolean')
+  )
+}
+
+// A period without its income/expenses arrays crashes the frontend on every load.
+function isValidPeriod(p) {
+  return (
+    isObject(p) &&
+    typeof p.id === 'string' &&
+    Array.isArray(p.income) &&
+    p.income.every(isObject) &&
+    Array.isArray(p.expenses) &&
+    p.expenses.every(isObject)
   )
 }
 
@@ -101,6 +135,11 @@ app.put('/api/expenses', async (req, res, next) => {
     if (!Array.isArray(periods)) {
       return res.status(400).json({ error: 'Expected the request body to be { periods, activeId }.' })
     }
+    if (!periods.every(isValidPeriod)) {
+      return res.status(400).json({
+        error: 'Expected every period to be an object with an id, an income array and an expenses array.',
+      })
+    }
     await writeJSON('expenses', { periods, activeId: activeId ?? null })
     res.json({ ok: true })
   } catch (err) {
@@ -146,7 +185,8 @@ app.put('/api/matches', async (req, res, next) => {
     const body = req.body
     if (!Array.isArray(body) || !body.every(isValidMatch)) {
       return res.status(400).json({
-        error: 'Expected an array of matches, each with id, date, matchNumber, points, and expenses.',
+        error:
+          'Expected an array of matches, each with id, date, matchNumber, a points array of player scores, and an expenses array of { label, amount }.',
       })
     }
     await writeJSON('matches', body)
@@ -170,6 +210,12 @@ app.put('/api/report-settings', async (req, res, next) => {
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
       return res.status(400).json({ error: 'Expected the request body to be a settings object.' })
     }
+    if (!isValidReportSettings(req.body)) {
+      return res.status(400).json({
+        error:
+          'Report settings fields have the wrong type (text for monthLabel/tillDate/customMessage, true/false for showWinsLosses, a number or text for matchesPlayed/wins/losses).',
+      })
+    }
     await writeJSON('reportSettings', req.body)
     res.json({ ok: true })
   } catch (err) {
@@ -182,8 +228,16 @@ app.use((req, res) => {
 })
 
 app.use((err, req, res, _next) => {
-  if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+  // Only body-parser errors are the client's fault; a bare SyntaxError means a corrupted data file (500).
+  if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'Request body is not valid JSON.' })
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body is too large.' })
+  }
+  const status = err.status ?? err.statusCode
+  if (status >= 400 && status < 500 && err.expose) {
+    return res.status(status).json({ error: err.message })
   }
   console.error(err)
   res.status(500).json({ error: 'Internal server error' })

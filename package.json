@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch-path=server.js --watch-path=jsonStore.js --watch-path=defaults.js server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
     "cors": "^2.8.5",
