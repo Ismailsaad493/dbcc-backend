@@ -1,15 +1,12 @@
 {
   "name": "dbcc-backend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch-path=server.js --watch-path=jsonStore.js --watch-path=defaults.js server.js",
-    "start": "node server.js",
-    "test": "node --test \"test/*.test.js\""
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.21.2"
+    "dev": "dotnet run --project Dbcc.Api/Dbcc.Api.csproj",
+    "start": "dotnet run --no-launch-profile --project Dbcc.Api/Dbcc.Api.csproj --configuration Release",
+    "build": "dotnet build Dbcc.Api/Dbcc.Api.csproj",
+    "test": "dotnet restore Dbcc.Api/Dbcc.Api.csproj --ignore-failed-sources -p:NuGetAudit=false && dotnet build Dbcc.Api/Dbcc.Api.csproj --no-restore && node --test \"test/*.test.js\""
   }
 }
