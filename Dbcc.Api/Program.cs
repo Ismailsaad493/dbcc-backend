@@ -5,6 +5,16 @@ using Dbcc.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 
+static string? ReadMongoUri(string name)
+{
+    var value = Environment.GetEnvironmentVariable(name);
+    return !string.IsNullOrWhiteSpace(value) &&
+        (value.StartsWith("mongodb://", StringComparison.OrdinalIgnoreCase) ||
+         value.StartsWith("mongodb+srv://", StringComparison.OrdinalIgnoreCase))
+        ? value
+        : null;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 var port = Environment.GetEnvironmentVariable("PORT");
 builder.WebHost.UseUrls(string.IsNullOrWhiteSpace(port) ? "http://0.0.0.0:4000" : $"http://0.0.0.0:{port}");
@@ -25,7 +35,12 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
-var connectionString = builder.Configuration.GetConnectionString("MongoDb");
+// Render currently has an existing DBCC secret. Accept it when it contains
+// an Atlas URI, while preferring the standard connection-string variables.
+var connectionString = ReadMongoUri("ConnectionStrings__MongoDb")
+    ?? ReadMongoUri("MONGODB_URI")
+    ?? ReadMongoUri("DBCC")
+    ?? builder.Configuration.GetConnectionString("MongoDb");
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:MongoDb is not configured.");
 if (string.IsNullOrWhiteSpace(builder.Configuration["MongoDb:Database"]))
