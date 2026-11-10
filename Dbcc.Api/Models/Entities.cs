@@ -1,27 +1,35 @@
+using MongoDB.Bson.Serialization.Attributes;
+
 namespace Dbcc.Api.Models;
 
 public sealed class PlayerEntity
 {
+    [BsonId]
     public int Id { get; set; }
     public string Name { get; set; } = "";
     public double Batting { get; set; }
     public double Bowling { get; set; }
     public double Fielding { get; set; }
     public string ExtraJson { get; set; } = "{}";
+    [BsonIgnore]
     public CollectionEntity? Collection { get; set; }
+    [BsonIgnore]
     public ICollection<MatchPlayerScoreEntity> MatchScores { get; set; } = new List<MatchPlayerScoreEntity>();
 }
 
 public sealed class CollectionEntity
 {
+    [BsonId]
     public int PlayerId { get; set; }
     public double AmountPaid { get; set; }
     public string ExtraJson { get; set; } = "{}";
+    [BsonIgnore]
     public PlayerEntity Player { get; set; } = null!;
 }
 
 public sealed class MatchEntity
 {
+    [BsonId]
     public string Id { get; set; } = "";
     public string Date { get; set; } = "";
     public string MatchNumber { get; set; } = "";
@@ -41,23 +49,26 @@ public sealed class MatchPlayerScoreEntity
     public double Fielding { get; set; }
     public int SortOrder { get; set; }
     public string ExtraJson { get; set; } = "{}";
+    [BsonIgnore]
     public MatchEntity Match { get; set; } = null!;
+    [BsonIgnore]
     public PlayerEntity Player { get; set; } = null!;
 }
 
 public sealed class MatchExpenseEntity
 {
-    public int Id { get; set; }
     public string MatchId { get; set; } = "";
     public int SortOrder { get; set; }
     public string Label { get; set; } = "";
     public double Amount { get; set; }
     public string ExtraJson { get; set; } = "{}";
+    [BsonIgnore]
     public MatchEntity Match { get; set; } = null!;
 }
 
 public sealed class ExpenseTrackerEntity
 {
+    [BsonId]
     public int Id { get; set; } = 1;
     public string? ActiveId { get; set; }
     public ICollection<ExpensePeriodEntity> Periods { get; set; } = new List<ExpensePeriodEntity>();
@@ -75,13 +86,13 @@ public sealed class ExpensePeriodEntity
     public string CollectionLabel { get; set; } = "";
     public string CollectionAmountJson { get; set; } = "\"\"";
     public string ExtraJson { get; set; } = "{}";
+    [BsonIgnore]
     public ExpenseTrackerEntity Tracker { get; set; } = null!;
     public ICollection<ExpenseLineItemEntity> Items { get; set; } = new List<ExpenseLineItemEntity>();
 }
 
 public sealed class ExpenseLineItemEntity
 {
-    public int Id { get; set; }
     public string PeriodId { get; set; } = "";
     public string ExternalId { get; set; } = "";
     public string Kind { get; set; } = "Income";
@@ -90,17 +101,20 @@ public sealed class ExpenseLineItemEntity
     public string AmountJson { get; set; } = "\"\"";
     public string? Date { get; set; }
     public string ExtraJson { get; set; } = "{}";
+    [BsonIgnore]
     public ExpensePeriodEntity Period { get; set; } = null!;
 }
 
 public sealed class ReportSettingsEntity
 {
+    [BsonId]
     public int Id { get; set; } = 1;
     public string Json { get; set; } = "{}";
 }
 
 public sealed class InitializationRecordEntity
 {
+    [BsonId]
     public int Id { get; set; } = 1;
     public DateTime CompletedAtUtc { get; set; }
 }

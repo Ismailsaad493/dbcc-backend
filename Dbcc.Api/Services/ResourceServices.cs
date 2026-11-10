@@ -3,7 +3,6 @@ using Dbcc.Api.Contracts;
 using Dbcc.Api.Data;
 using Dbcc.Api.Models;
 using Dbcc.Api.Repositories;
-using Microsoft.EntityFrameworkCore;
 
 namespace Dbcc.Api.Services;
 

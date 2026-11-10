@@ -15,5 +15,5 @@ npm-debug.log*
 .idea
 .DS_Store
 
-# Existing club data is retained for the one-time migration into SQL Server.
+# Existing club data is retained for the one-time import into MongoDB.
 data/*.json

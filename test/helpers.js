@@ -1,11 +1,12 @@
-// Starts the ASP.NET Core API on a free port with an isolated SQLite database.
-// Tests never connect to the configured SQL Server or read/write be/data.
+// Starts the ASP.NET Core API on a free port with a uniquely named MongoDB
+// database. Tests never touch the application's DBCC database or be/data.
 
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const beRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -38,13 +39,14 @@ async function waitUntilUp(base, child, getOutput, timeoutMs = 20000) {
 }
 
 /** Starts an API. Reuse dataDir to test persistence across a process restart. */
-export async function startServer({ dataDir, provider = 'Sqlite', connectionString } = {}) {
+export async function startServer({ dataDir, databaseName, connectionString } = {}) {
   const ownsDir = !dataDir
   const dir = dataDir || (await mkdtemp(path.join(os.tmpdir(), 'dbcc-api-test-')))
   const port = await freePort()
   const base = `http://127.0.0.1:${port}`
-  provider = process.env.DBCC_TEST_PROVIDER || provider
-  const dbConnection = connectionString || process.env.DBCC_TEST_CONNECTION_STRING || `Data Source=${path.join(dir, 'db.sqlite')}`
+  const dbConnection = connectionString || process.env.DBCC_TEST_CONNECTION_STRING ||
+    'mongodb://127.0.0.1:27017/?serverSelectionTimeoutMS=1500&connectTimeoutMS=1500'
+  const dbName = databaseName || `DBCC_Test_${process.pid}_${randomUUID().replaceAll('-', '')}`
   let output = ''
   const child = spawn('dotnet', ['run', '--no-launch-profile', '--no-build', '--project', projectPath], {
     cwd: path.dirname(projectPath),
@@ -52,9 +54,10 @@ export async function startServer({ dataDir, provider = 'Sqlite', connectionStri
       ...process.env,
       ASPNETCORE_ENVIRONMENT: 'Development',
       DOTNET_ENVIRONMENT: 'Development',
-      Database__Provider: provider,
-      ConnectionStrings__DefaultConnection: dbConnection,
+      ConnectionStrings__MongoDb: dbConnection,
+      MongoDb__Database: dbName,
       DBCC_DATA_DIR: dir,
+      DBCC_TEST_MODE: 'true',
       PORT: String(port),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -74,11 +77,22 @@ export async function startServer({ dataDir, provider = 'Sqlite', connectionStri
     throw error
   }
 
-  async function stop({ keepData = false } = {}) {
+  async function stop({ keepData = false, keepDatabase = false } = {}) {
     if (child.exitCode === null && child.signalCode === null) {
-      const exited = new Promise((resolve) => child.once('exit', resolve))
-      child.kill()
-      await exited
+      if (!keepDatabase) {
+        try {
+          const preserve = keepDatabase ? '?keepDatabase=true' : ''
+          await fetch(`${base}/__test/shutdown${preserve}`, { method: 'POST', signal: AbortSignal.timeout(3000) })
+        } catch {
+          // The MongoDB failure test intentionally cannot reach its server.
+        }
+      }
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = new Promise((resolve) => child.once('exit', resolve))
+        const timer = setTimeout(() => child.kill(), 3000)
+        await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 3500))])
+        clearTimeout(timer)
+      }
     }
     if (ownsDir && !keepData) await rm(dir, { recursive: true, force: true })
   }

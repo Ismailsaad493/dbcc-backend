@@ -1,5 +1,5 @@
-// HTTP integration checks for the ASP.NET Core API. Each server gets a temp
-// SQLite database; no test calls the configured SQL Server or the live club data.
+// HTTP integration checks for the ASP.NET Core API. Each server gets a
+// uniquely named MongoDB database; tests never touch DBCC or the live club data.
 
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
@@ -153,8 +153,8 @@ test('validation, unknown routes, CORS, and malformed JSON produce useful HTTP r
 
 test('database connection failures report readiness and API requests as 503', async () => {
   const unavailable = await startServer({
-    provider: 'SqlServer',
-    connectionString: 'Server=127.0.0.1,1;Database=DBCC;User Id=invalid;Password=invalid;TrustServerCertificate=True;Connect Timeout=1',
+    databaseName: `DBCC_Test_Unavailable_${process.pid}`,
+    connectionString: 'mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=500&connectTimeoutMS=500',
   })
   try {
     assert.equal((await fetch(`${unavailable.base}/health/ready`)).status, 503)

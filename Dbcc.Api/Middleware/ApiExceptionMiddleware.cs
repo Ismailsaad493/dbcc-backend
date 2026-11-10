@@ -1,5 +1,5 @@
-using System.Data.Common;
 using System.Text.Json;
+using MongoDB.Driver;
 
 namespace Dbcc.Api.Middleware;
 
@@ -28,7 +28,7 @@ public sealed class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExce
             context.Response.StatusCode = databaseFailure ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status500InternalServerError;
             context.Response.ContentType = "application/json";
             var message = databaseFailure
-                ? "The database is unavailable. Check the SQL Server connection and try again."
+                ? "The database is unavailable. Check the MongoDB connection and try again."
                 : "Internal server error.";
             await JsonSerializer.SerializeAsync(context.Response.Body, new { error = message }, cancellationToken: context.RequestAborted);
         }
@@ -38,7 +38,7 @@ public sealed class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExce
     {
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            if (current is DbException) return true;
+            if (current is MongoException) return true;
             if (current is TimeoutException) return true;
         }
         return false;

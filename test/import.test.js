@@ -2,13 +2,15 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { makePlayers, makeCollections, makeMatch, startServer, makeClient } from './helpers.js'
 
-test('imports existing JSON resources once and keeps SQL-backed changes after restart', async () => {
+test('imports existing JSON resources once and keeps MongoDB-backed changes after restart', async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'dbcc-import-test-'))
+  const databaseName = `DBCC_Test_Import_${process.pid}_${randomUUID().replaceAll('-', '')}`
   let server
   try {
     const players = makePlayers().map((player, index) => index === 0 ? { ...player, batting: 31, legacyFlag: 'kept' } : player)
@@ -24,7 +26,7 @@ test('imports existing JSON resources once and keeps SQL-backed changes after re
       writeFile(path.join(dataDir, 'reportSettings.json'), JSON.stringify(settings)),
     ])
 
-    server = await startServer({ dataDir })
+    server = await startServer({ dataDir, databaseName })
     let client = makeClient(server.base)
     assert.equal((await client.get('/api/players')).body[0].batting, 31)
     assert.equal((await client.get('/api/players')).body[0].legacyFlag, 'kept')
@@ -39,9 +41,9 @@ test('imports existing JSON resources once and keeps SQL-backed changes after re
     const changed = await client.get('/api/players')
     changed.body[0].batting = 99
     await client.put('/api/players', changed.body)
-    await server.stop({ keepData: true })
+    await server.stop({ keepData: true, keepDatabase: true })
 
-    server = await startServer({ dataDir })
+    server = await startServer({ dataDir, databaseName })
     client = makeClient(server.base)
     assert.equal((await client.get('/api/players')).body[0].batting, 99)
     assert.equal((await client.get('/api/report-settings')).body.customMessage, 'Imported')

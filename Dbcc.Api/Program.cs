@@ -2,8 +2,8 @@ using Dbcc.Api.Data;
 using Dbcc.Api.Middleware;
 using Dbcc.Api.Repositories;
 using Dbcc.Api.Services;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Driver;
 
 var builder = WebApplication.CreateBuilder(args);
 var port = Environment.GetEnvironmentVariable("PORT");
@@ -25,28 +25,14 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
-var provider = builder.Configuration["Database:Provider"] ?? "SqlServer";
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var connectionString = builder.Configuration.GetConnectionString("MongoDb");
 if (string.IsNullOrWhiteSpace(connectionString))
-{
-    throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
-}
+    throw new InvalidOperationException("ConnectionStrings:MongoDb is not configured.");
+if (string.IsNullOrWhiteSpace(builder.Configuration["MongoDb:Database"]))
+    throw new InvalidOperationException("MongoDb:Database is not configured.");
 
-builder.Services.AddDbContext<DbccDbContext>(options =>
-{
-    if (string.Equals(provider, "Sqlite", StringComparison.OrdinalIgnoreCase))
-    {
-        options.UseSqlite(connectionString);
-    }
-    else if (string.Equals(provider, "SqlServer", StringComparison.OrdinalIgnoreCase))
-    {
-        options.UseSqlServer(connectionString);
-    }
-    else
-    {
-        throw new InvalidOperationException($"Unsupported database provider '{provider}'. Use SqlServer or Sqlite.");
-    }
-});
+builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(connectionString));
+builder.Services.AddSingleton<MongoDbContext>();
 
 builder.Services.AddScoped<IPlayerRepository, PlayerRepository>();
 builder.Services.AddScoped<ICollectionRepository, CollectionRepository>();
@@ -72,15 +58,13 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/", () => Results.Json(new { ok = true, service = "dbcc-api" }));
 app.MapGet("/health/live", () => Results.Ok(new { ok = true }));
-app.MapGet("/health/ready", async (DbccDbContext db, DatabaseStatus status, CancellationToken ct) =>
+app.MapGet("/health/ready", async (MongoDbContext db, DatabaseStatus status, CancellationToken ct) =>
 {
     try
     {
-        var connected = await db.Database.CanConnectAsync(ct);
-        status.SetReady(connected);
-        return connected
-            ? Results.Ok(new { ok = true, database = "connected" })
-            : Results.Json(new { ok = false, error = "Database is unavailable." }, statusCode: 503);
+        await db.PingAsync(ct);
+        status.SetReady(true);
+        return Results.Ok(new { ok = true, database = "connected" });
     }
     catch (Exception ex) when (ApiExceptionMiddleware.IsDatabaseFailure(ex))
     {
@@ -89,35 +73,55 @@ app.MapGet("/health/ready", async (DbccDbContext db, DatabaseStatus status, Canc
     }
 });
 
+// Test-only cleanup is enabled by the Node integration harness and restricted
+// to its DBCC_Test_* databases. It is never registered for a normal app run.
+if (string.Equals(Environment.GetEnvironmentVariable("DBCC_TEST_MODE"), "true", StringComparison.OrdinalIgnoreCase))
+{
+    app.MapPost("/__test/shutdown", async (HttpContext context, MongoDbContext db, IHostApplicationLifetime lifetime) =>
+    {
+        var databaseName = db.Database.DatabaseNamespace.DatabaseName;
+        if (!databaseName.StartsWith("DBCC_Test_", StringComparison.Ordinal))
+            return Results.NotFound();
+
+        if (!string.Equals(context.Request.Query["keepDatabase"], "true", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await db.Database.Client.DropDatabaseAsync(databaseName, context.RequestAborted);
+            }
+            catch (MongoException)
+            {
+                // The connection-failure test cannot reach a server to clean up.
+            }
+        }
+        context.Response.StatusCode = StatusCodes.Status204NoContent;
+        await context.Response.CompleteAsync();
+        lifetime.StopApplication();
+        return Results.Empty;
+    });
+}
+
 app.MapControllers();
 app.MapFallback("/api/{**path}", (HttpContext context) => Results.Json(
     new { error = $"No route for {context.Request.Method} {context.Request.Path}" },
     statusCode: StatusCodes.Status404NotFound));
 
-// Keep the API process alive when SQL Server is unavailable so health checks and
+// Keep the API process alive when MongoDB is unavailable so health checks and
 // actionable 503 responses remain available while the database is repaired.
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseStartup");
     try
     {
-        var db = scope.ServiceProvider.GetRequiredService<DbccDbContext>();
-        if (string.Equals(provider, "Sqlite", StringComparison.OrdinalIgnoreCase))
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
-        else
-        {
-            await db.Database.MigrateAsync();
-        }
-
+        var db = scope.ServiceProvider.GetRequiredService<MongoDbContext>();
+        await db.PingAsync(CancellationToken.None);
         await DatabaseInitializer.InitializeAsync(db, app.Environment.ContentRootPath, logger);
         scope.ServiceProvider.GetRequiredService<DatabaseStatus>().SetReady(true);
     }
     catch (Exception ex) when (ApiExceptionMiddleware.IsDatabaseFailure(ex))
     {
         scope.ServiceProvider.GetRequiredService<DatabaseStatus>().SetReady(false);
-        logger.LogError(ex, "Database initialization failed. Check the SQL Server connection string and ensure the database is reachable.");
+        logger.LogError(ex, "Database initialization failed. Check the MongoDB connection string and ensure the server is reachable.");
     }
 }
 
